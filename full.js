@@ -2886,12 +2886,9 @@ const buildBrowserContextMenuTemplate = (webContents, params = {}) => {
             if (openHttpsInBrowser({ url: linkURL, openerWebContents: webContents, baseUrl })) {
               return
             }
-            if (popupShellManager.isPinokioWindowUrl(linkURL, root_url)) {
-              loadNewWindow(linkURL, PORT)
-            } else {
-              popupShellManager.openExternalWindow({ url: linkURL })
+            if (openTargetWindow({ url: linkURL })) {
+              return
             }
-            return
           }
         } catch (error) {
         }
@@ -3345,11 +3342,7 @@ const attach = (event, webContents) => {
         rootUrl: root_url
       })
       if (targetUrl) {
-        if (isPinokioNavigationUrl(targetUrl, referrerUrl || (root_url || undefined))) {
-          loadNewWindow(targetUrl, PORT)
-        } else {
-          popupShellManager.openExternalWindow({ url: targetUrl })
-        }
+        openTargetWindow({ url: targetUrl })
       }
       return { action: 'deny' };
     }
@@ -3364,7 +3357,7 @@ const attach = (event, webContents) => {
         rootUrl: root_url
       })
       if (targetUrl) {
-        popupShellManager.openExternalWindow({ url: targetUrl })
+        openTargetWindow({ url: targetUrl })
       }
       return { action: 'deny' };
     } else if (isPinokioNavigationUrl(url, referrerUrl || (root_url || undefined))) {
@@ -3406,7 +3399,7 @@ const attach = (event, webContents) => {
         rootUrl: root_url
       })
       if (targetUrl) {
-        popupShellManager.openExternalWindow({ url: targetUrl })
+        openTargetWindow({ url: targetUrl })
       }
       return { action: 'deny' };
     }
@@ -3594,6 +3587,21 @@ const loadNewWindow = (url, port) => {
   win.loadURL(url)
   winState.manage(win)
 
+}
+const openTargetWindow = ({ url, windowState } = {}) => {
+  const targetUrl = typeof url === 'string' ? url.trim() : ''
+  if (!targetUrl) {
+    return null
+  }
+  if (isPinokioNavigationUrl(targetUrl, root_url || undefined)) {
+    if (!PORT) {
+      return null
+    }
+    loadNewWindow(targetUrl, PORT)
+    return 'window'
+  }
+  popupShellManager.openExternalWindow({ url: targetUrl, windowState })
+  return 'popup'
 }
 popupShellManager.setPinokioHomeWindowOpener(() => {
   if (root_url && PORT) {
@@ -3850,13 +3858,16 @@ document.querySelector("form").addEventListener("submit", (e) => {
             const surface = normalizeOpenSurface(payload.surface)
             if (surface === 'popup') {
               const popupState = buildPopupWindowState({ preset: payload.preset })
-              popupShellManager.openExternalWindow({
+              const surfaceUsed = openTargetWindow({
                 url,
                 windowState: popupState.windowState
               })
+              if (!surfaceUsed) {
+                return { ok: false, error: 'unavailable-surface', surface_used: 'browser' }
+              }
               return {
                 ok: true,
-                surface_used: 'popup',
+                surface_used: surfaceUsed,
                 preset_used: popupState.preset
               }
             }
